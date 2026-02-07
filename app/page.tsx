@@ -1,11 +1,7 @@
-async function getData() {
-  const res = await fetch(`/api/week/current`, { cache: "no-store" });
-  if (!res.ok) return { weekId: "non-généré", items: [] };
-  return res.json();
-}
+import { getWeekly } from "../lib/store";
 
-export default async function Home() {
-  const data = await getData();
+export default function Home() {
+  const data = getWeekly() || { weekId: "non-généré", items: [] };
 
   return (
     <main style={{ padding: 16, maxWidth: 980, margin: "0 auto" }}>
@@ -71,7 +67,7 @@ export default async function Home() {
 
       {data.items.length === 0 && (
         <p style={{ marginTop: 16, opacity: 0.7 }}>
-          Pas encore généré. (Après déploiement, on lance la génération une fois.)
+          Pas encore généré. Va sur /admin pour lancer le refresh.
         </p>
       )}
     </main>
