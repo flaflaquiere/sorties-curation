@@ -131,8 +131,9 @@ export async function POST(req: Request) {
   const items = [];
   for (let i = 0; i < ranked.length; i++) {
     const r: any = ranked[i];
-    const uniqueSignals = Array.from(new Set(r.signals));
-    const { artistSummary, editorialReview } = await openaiGenerate(r.artistName, r.albumName, uniqueSignals);
+   const uniqueSignals = Array.from(new Set((r.signals as string[]) || []));
+    const signals = uniqueSignals.map(String);
+   const { artistSummary, editorialReview } = await openaiGenerate(r.artistName, r.albumName, signals);
 
     items.push({
       rank: i + 1,
