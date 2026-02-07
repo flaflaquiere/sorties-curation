@@ -1,10 +1,14 @@
-// Stockage en mémoire (V1). Pour V2 on passera à une DB/KV.
-let memory: any = null;
+import Redis from "ioredis";
 
-export function getWeekly() {
-  return memory;
+const redis = new Redis(process.env.REDIS_URL || "");
+
+const KEY = "weekly";
+
+export async function getWeekly() {
+  const raw = await redis.get(KEY);
+  return raw ? JSON.parse(raw) : null;
 }
 
-export function setWeekly(data: any) {
-  memory = data;
+export async function setWeekly(data: any) {
+  await redis.set(KEY, JSON.stringify(data));
 }
