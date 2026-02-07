@@ -7,7 +7,12 @@ export default function Admin() {
       <p>Clique pour générer / mettre à jour le Top 20.</p>
 
       <button
-        style={{ padding: 12, borderRadius: 10, border: "1px solid #ddd", cursor: "pointer" }}
+        style={{
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #ddd",
+          cursor: "pointer"
+        }}
         onClick={async () => {
           const key = prompt("CRON_KEY ?");
           if (!key) return;
