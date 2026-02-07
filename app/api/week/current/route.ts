@@ -1,11 +1,7 @@
-let memory: any = null;
+import { getWeekly } from "@/lib/store";
 
 export async function GET() {
-  if (memory) return Response.json(memory);
+  const data = getWeekly();
+  if (data) return Response.json(data);
   return Response.json({ weekId: "non-généré", items: [] });
-}
-
-// (astuce) permet au refresh de stocker en mémoire
-export function _setWeekly(data: any) {
-  memory = data;
 }
