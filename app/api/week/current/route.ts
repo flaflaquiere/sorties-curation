@@ -1,4 +1,4 @@
-import { getWeekly } from "@/lib/store";
+import { getWeekly } from "../../../../lib/store";
 
 export async function GET() {
   const data = getWeekly();
