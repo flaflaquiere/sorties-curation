@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { setWeekly } from "@/lib/store";
+import { setWeekly } from "../../../lib/store";
 
 function weekId(d = new Date()) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
