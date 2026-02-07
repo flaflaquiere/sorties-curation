@@ -151,7 +151,7 @@ export async function POST(req: Request) {
   }
 
   const weekly = { weekId: weekId(), items };
- setWeekly(weekly);
+ await setWeekly(weekly);
 
   return Response.json({ ok: true, weekId: weekly.weekId, count: items.length });
 }
