@@ -1,5 +1,5 @@
 import Parser from "rss-parser";
-import { _setWeekly } from "../week/current/route";
+import { setWeekly } from "@/lib/store";
 
 function weekId(d = new Date()) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
   }
 
   const weekly = { weekId: weekId(), items };
-  _setWeekly(weekly);
+ setWeekly(weekly);
 
   return Response.json({ ok: true, weekId: weekly.weekId, count: items.length });
 }
