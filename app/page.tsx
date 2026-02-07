@@ -1,7 +1,7 @@
-import { getWeekly } from "../lib/store";
-
-export default function Home() {
-  const data = getWeekly() || { weekId: "non-généré", items: [] };
+export default async function Home() {
+  const base = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
+  const res = await fetch(`${base}/api/week/current`, { cache: "no-store" });
+  const data = res.ok ? await res.json() : { weekId: "non-généré", items: [] };
 
   return (
     <main style={{ padding: 16, maxWidth: 980, margin: "0 auto" }}>
@@ -12,22 +12,8 @@ export default function Home() {
 
       <div style={{ display: "grid", gap: 12 }}>
         {data.items.map((it: any) => (
-          <div
-            key={it.rank}
-            style={{
-              border: "1px solid #eee",
-              borderRadius: 12,
-              padding: 12
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap"
-              }}
-            >
+          <div key={it.rank} style={{ border: "1px solid #eee", borderRadius: 12, padding: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontSize: 12, opacity: 0.6 }}>#{it.rank}</div>
                 <div style={{ fontWeight: 800 }}>{it.albumName}</div>
@@ -38,16 +24,10 @@ export default function Home() {
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <a href={it.links.youtubeMusic} target="_blank" rel="noreferrer">
-                  YouTube Music
-                </a>
-                <a href={it.links.soundcloud} target="_blank" rel="noreferrer">
-                  SoundCloud
-                </a>
+                <a href={it.links.youtubeMusic} target="_blank" rel="noreferrer">YouTube Music</a>
+                <a href={it.links.soundcloud} target="_blank" rel="noreferrer">SoundCloud</a>
                 {it.sourceLinks?.map((s: any) => (
-                  <a key={s.url} href={s.url} target="_blank" rel="noreferrer">
-                    {s.label}
-                  </a>
+                  <a key={s.url} href={s.url} target="_blank" rel="noreferrer">{s.label}</a>
                 ))}
               </div>
             </div>
