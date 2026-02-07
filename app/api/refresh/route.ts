@@ -150,8 +150,13 @@ export async function POST(req: Request) {
     });
   }
 
-  const weekly = { weekId: weekId(), items };
- await setWeekly(weekly);
+const weekly = { weekId: weekId(), items };
+await setWeekly(weekly);
+const check = await getWeekly();
 
-  return Response.json({ ok: true, weekId: weekly.weekId, count: items.length });
-}
+return Response.json({
+  ok: true,
+  weekId: weekly.weekId,
+  count: items.length,
+  stored: !!check
+});
