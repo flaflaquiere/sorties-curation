@@ -149,14 +149,14 @@ export async function POST(req: Request) {
       sourceLinks: (r.sourceLinks || []).slice(0, 3)
     });
   }
+  const weekly = { weekId: weekId(), items };
+  await setWeekly(weekly);
+  const check = await getWeekly();
 
-const weekly = { weekId: weekId(), items };
-await setWeekly(weekly);
-const check = await getWeekly();
-
-return Response.json({
-  ok: true,
-  weekId: weekly.weekId,
-  count: items.length,
-  stored: !!check
-});
+  return Response.json({
+    ok: true,
+    weekId: weekly.weekId,
+    count: items.length,
+    stored: !!check
+  });
+}
