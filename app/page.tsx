@@ -1,11 +1,9 @@
-export default async function Home() {
-  // base url sûr en production Vercel
-  const base = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "https://sorties-curation.vercel.app";
+export const dynamic = "force-dynamic";
 
-  const res = await fetch(`${base}/api/week/current`, { cache: "no-store" });
-  const data = res.ok ? await res.json() : { weekId: "non-généré", items: [] };
+import { getWeekly } from "../lib/store";
+
+export default async function Home() {
+  const data = (await getWeekly()) ?? { weekId: "non-généré", items: [] };
 
   return (
     <main style={{ padding: 16, maxWidth: 980, margin: "0 auto" }}>
