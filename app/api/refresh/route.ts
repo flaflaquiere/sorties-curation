@@ -129,26 +129,16 @@ export async function POST(req: Request) {
 
   // Generate texts + links
   const items = [];
-  for (let i = 0; i < ranked.length; i++) {
-    const r: any = ranked[i];
-   const uniqueSignals = Array.from(new Set((r.signals as string[]) || []));
-    const signals = uniqueSignals.map(String);
-   const { artistSummary, editorialReview } = await openaiGenerate(r.artistName, r.albumName, signals);
-
-    items.push({
-      rank: i + 1,
-      artistName: r.artistName,
-      albumName: r.albumName,
-      signals: uniqueSignals,
-      artistSummary,
-      editorialReview,
-      links: {
-        youtubeMusic: ytMusicSearchUrl(r.artistName, r.albumName),
-        soundcloud: scSearchUrl(r.artistName, r.albumName)
-      },
-      sourceLinks: (r.sourceLinks || []).slice(0, 3)
-    });
-  }
+ const items: any[] = ranked.map((r: any, idx: number) => {
+  const uniqueSignals = Array.from(new Set((r.signals as string[]) || []));
+  return {
+    rank: idx + 1,
+    artistName: r.artistName,
+    albumName: r.albumName,
+    signals: uniqueSignals,
+    sourceLinks: (r.sourceLinks || []).slice(0, 3)
+  };
+});
   const weekly = { weekId: weekId(), items };
   await setWeekly(weekly);
   const check = await getWeekly();
