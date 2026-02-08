@@ -1,21 +1,15 @@
-// app/api/refresh/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-
-// >>>> ADAPTE CET IMPORT SI TON lib/store EXPORT DES NOMS DIFFERENTS <<<<
 import { setWeekly } from "@/lib/store";
 
-// --------------------
-// Types
-// --------------------
 type SourceLink = { label: string; url: string };
 
 type Candidate = {
-  artistName: string; // peut être vide au départ
+  artistName: string;
   albumName: string;
-  signals?: string[];
-  sourceLinks?: SourceLink[];
-  score?: number;
+  signals: string[];
+  sourceLinks: SourceLink[];
+  score: number;
 };
 
 type WeeklyItem = {
@@ -25,134 +19,170 @@ type WeeklyItem = {
   signals: string[];
   artistSummary: string;
   editorialReview: string;
-  links: {
-    youtubeMusic: string;
-    soundcloud: string;
-  };
+  links: { youtubeMusic: string; soundcloud: string };
   sourceLinks: SourceLink[];
 };
 
-type WeeklyPayload = {
-  weekId: string;
-  items: WeeklyItem[];
-};
+type WeeklyPayload = { weekId: string; items: WeeklyItem[] };
 
-// --------------------
-// Helpers
-// --------------------
+// -------------------- helpers --------------------
 function computeWeekId(d = new Date()) {
-  // ISO week (approx simple). Si tu avais déjà une fonction weekId ailleurs, utilise-la.
-  // Format: YYYY-WW
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  const ww = String(weekNo).padStart(2, "0");
-  return `${date.getUTCFullYear()}-${ww}`;
+  return `${date.getUTCFullYear()}-${String(weekNo).padStart(2, "0")}`;
+}
+
+function safeString(x: unknown) {
+  return typeof x === "string" ? x.trim() : "";
+}
+
+function uniq(arr: unknown): string[] {
+  if (!Array.isArray(arr)) return [];
+  return Array.from(new Set(arr.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)));
 }
 
 function ytMusicSearchUrl(artist: string, album: string) {
   const q = encodeURIComponent([artist, album].filter(Boolean).join(" ").trim());
   return `https://music.youtube.com/search?q=${q}`;
 }
-
 function scSearchUrl(artist: string, album: string) {
   const q = encodeURIComponent([artist, album].filter(Boolean).join(" ").trim());
   return `https://soundcloud.com/search?q=${q}`;
 }
 
-function uniqStrings(arr: unknown): string[] {
-  if (!Array.isArray(arr)) return [];
-  const cleaned = arr
-    .map((x) => (typeof x === "string" ? x.trim() : ""))
-    .filter(Boolean);
-  return Array.from(new Set(cleaned));
-}
-
-function safeString(x: unknown): string {
-  return typeof x === "string" ? x.trim() : "";
-}
-
-// --------------------
-// Auth CRON_KEY
-// --------------------
-async function readCronKeyFromRequest(req: Request): Promise<string> {
-  // On accepte plusieurs façons (pratique)
-  // 1) header: x-cron-key
+async function readCronKeyFromRequest(req: Request) {
   const h = req.headers.get("x-cron-key");
   if (h) return h;
 
-  // 2) query: ?key=...
   const url = new URL(req.url);
   const q = url.searchParams.get("key");
   if (q) return q;
 
-  // 3) body JSON: { key: "..." }
   try {
     const body = await req.clone().json();
     if (body?.key && typeof body.key === "string") return body.key;
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   return "";
 }
 
-function isAuthorized(provided: string) {
+function authorized(provided: string) {
   const expected = process.env.CRON_KEY || "";
-  // si pas de CRON_KEY configurée, on autorise (tu peux changer en "false" si tu veux forcer)
-  if (!expected) return true;
+  if (!expected) return true; // si pas défini, on n’empêche pas
   return provided === expected;
 }
 
-// --------------------
-// 1) Collect candidates
-// --------------------
-// IMPORTANT : je ne peux pas deviner tes sources exactes.
-// Donc je te mets une version "safe" qui prend les candidats depuis un fichier statique
-// OU depuis une liste codée ici.
-// Si tu avais déjà du scraping/feeds, colle ton code dans cette fonction.
-async function collectCandidates(): Promise<Candidate[]> {
-  // TODO: remplace par ta logique existante (Pitchfork, Fnac, etc.)
-  // Pour éviter de casser, on renvoie un tableau vide si rien.
-  return [];
+// -------------------- pitchfork scraping --------------------
+// On récupère des URLs de reviews depuis deux pages.
+async function fetchPitchforkUrls(): Promise<Array<{ url: string; signal: string }>> {
+  const sources = [
+    { url: "https://pitchfork.com/best/new-music/", signal: "Pitchfork Best New Music" },
+    { url: "https://pitchfork.com/reviews/albums/", signal: "Pitchfork Review" },
+  ];
+
+  const out: Array<{ url: string; signal: string }> = [];
+
+  for (const s of sources) {
+    const res = await fetch(s.url, {
+      // éviter cache agressif
+      cache: "no-store",
+      headers: { "user-agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) continue;
+    const html = await res.text();
+
+    // On capte des liens /reviews/albums/xxx/
+    const re = /href="(\/reviews\/albums\/[^"]+?)"/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const path = m[1];
+      const full = `https://pitchfork.com${path}`;
+      out.push({ url: full, signal: s.signal });
+    }
+  }
+
+  // uniq par URL (garde signal le plus “fort” si doublon)
+  const map = new Map<string, string>();
+  for (const x of out) {
+    if (!map.has(x.url)) map.set(x.url, x.signal);
+    // si doublon, on combine
+    else map.set(x.url, `${map.get(x.url)} + ${x.signal}`);
+  }
+
+  return Array.from(map.entries()).map(([url, signal]) => ({ url, signal }));
 }
 
-// --------------------
-// 2) OpenAI enrich batch (1 seul appel)
-// --------------------
+// Extrait "Artist — Album" depuis la page Pitchfork.
+// Pitchfork met souvent un JSON-LD "MusicAlbum".
+async function fetchPitchforkMeta(reviewUrl: string): Promise<{ artistName: string; albumName: string } | null> {
+  const res = await fetch(reviewUrl, { cache: "no-store", headers: { "user-agent": "Mozilla/5.0" } });
+  if (!res.ok) return null;
+  const html = await res.text();
+
+  // 1) JSON-LD
+  const jsonldMatch = html.match(/<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonldMatch) {
+    try {
+      const raw = jsonldMatch[1].trim();
+      const obj = JSON.parse(raw);
+
+      // parfois c’est un tableau
+      const items = Array.isArray(obj) ? obj : [obj];
+      for (const it of items) {
+        if (it && it["@type"] === "MusicAlbum") {
+          const albumName = safeString(it.name);
+          const byArtist = it.byArtist;
+          let artistName = "";
+          if (typeof byArtist === "string") artistName = byArtist;
+          else if (byArtist && typeof byArtist === "object") artistName = safeString(byArtist.name);
+          if (artistName && albumName) return { artistName, albumName };
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2) fallback: souvent un <title> "Artist: Album"
+  const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+  if (titleMatch) {
+    const t = titleMatch[1].replace(/\s+\|\s+Pitchfork.*$/i, "").trim();
+    // formes courantes: "Artist: Album", "Artist Album Review"
+    const colon = t.split(":");
+    if (colon.length >= 2) {
+      const artistName = colon[0].trim();
+      const albumName = colon.slice(1).join(":").trim();
+      if (artistName && albumName) return { artistName, albumName };
+    }
+  }
+
+  return null;
+}
+
+// -------------------- OpenAI enrich (1 call) --------------------
 async function openaiEnrichBatch(items: Array<{ rank: number; artistName: string; albumName: string; signals: string[] }>) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    // Pas de clé => on renvoie vide (mais on garde artistName existant)
-    return items.map((it) => ({
-      rank: it.rank,
-      artistName: it.artistName || "",
-      artistSummary: "",
-      editorialReview: "",
-    }));
+    return items.map((it) => ({ rank: it.rank, artistSummary: "", editorialReview: "" }));
   }
 
   const client = new OpenAI({ apiKey });
 
-  // On demande un JSON strict.
   const input = [
     {
       role: "system" as const,
       content:
-        "Tu es un éditeur musique. Tu reçois une liste d'albums. Pour chaque item, tu dois: " +
-        "1) Déduire/corriger artistName si possible (sinon garder celui fourni), " +
-        "2) écrire artistSummary (2-3 phrases), " +
-        "3) écrire editorialReview (2-3 phrases). " +
-        "Réponds en JSON strict, sans texte autour.",
+        "Tu es un éditeur musique. Pour chaque album, écris (en français) : " +
+        "1) un résumé artiste 2-3 phrases (contexte + style), " +
+        "2) un avis éditorial 2-3 phrases (à quoi s’attendre). " +
+        "Ne cite pas de sources. Réponds en JSON strict { items: [...] }.",
     },
     {
       role: "user" as const,
-      content:
-        "Retourne un objet JSON { items: [...] } avec items = tableau de { rank, artistName, artistSummary, editorialReview } " +
-        "Langue: français.\n\n" +
-        JSON.stringify({ items }),
+      content: JSON.stringify({ items }),
     },
   ];
 
@@ -163,103 +193,81 @@ async function openaiEnrichBatch(items: Array<{ rank: number; artistName: string
       text: { format: { type: "json_object" } },
     });
 
-    const txt = resp.output_text || "{}";
-    const parsed = JSON.parse(txt);
-
+    const parsed = JSON.parse(resp.output_text || "{}");
     const arr = Array.isArray(parsed) ? parsed : parsed.items;
-    if (!Array.isArray(arr)) {
-      return items.map((it) => ({
-        rank: it.rank,
-        artistName: it.artistName || "",
-        artistSummary: "",
-        editorialReview: "",
-      }));
-    }
+    if (!Array.isArray(arr)) return items.map((it) => ({ rank: it.rank, artistSummary: "", editorialReview: "" }));
 
-    // Normalisation
     return arr.map((x: any) => ({
       rank: Number(x.rank),
-      artistName: safeString(x.artistName),
       artistSummary: safeString(x.artistSummary),
       editorialReview: safeString(x.editorialReview),
     }));
-  } catch (e: any) {
-    // Si 429 / quota / rate-limit => on ne casse pas
-    return items.map((it) => ({
-      rank: it.rank,
-      artistName: it.artistName || "",
-      artistSummary: "",
-      editorialReview: "",
-    }));
+  } catch {
+    // si 429 / quota, on renvoie vide sans casser le site
+    return items.map((it) => ({ rank: it.rank, artistSummary: "", editorialReview: "" }));
   }
 }
 
-// --------------------
-// POST handler
-// --------------------
+// -------------------- POST handler --------------------
 export async function POST(req: Request) {
-  const providedKey = await readCronKeyFromRequest(req);
-  if (!isAuthorized(providedKey)) {
+  const key = await readCronKeyFromRequest(req);
+  if (!authorized(key)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  // 1) Récupérer les candidats (à remplacer par ton code existant)
-  const candidatesRaw = await collectCandidates();
+  // 1) urls pitchfork
+  const urls = await fetchPitchforkUrls();
 
-  // Si collectCandidates renvoie vide, on ne fait rien mais on renvoie une réponse claire
-  if (!candidatesRaw.length) {
-    const weeklyEmpty: WeeklyPayload = { weekId: computeWeekId(), items: [] };
-    await setWeekly(weeklyEmpty);
-    return NextResponse.json({ ok: true, weekId: weeklyEmpty.weekId, count: 0, note: "No candidates" });
+  // 2) metas
+  const candidates: Candidate[] = [];
+  for (const u of urls.slice(0, 60)) {
+    const meta = await fetchPitchforkMeta(u.url);
+    if (!meta) continue;
+
+    // Score simple : Best New Music > Review
+    const score = u.signal.includes("Best New Music") ? 100 : 60;
+
+    candidates.push({
+      artistName: meta.artistName,
+      albumName: meta.albumName,
+      signals: uniq(u.signal.split("+").map((s) => s.trim())),
+      sourceLinks: [{ label: "Pitchfork", url: u.url }],
+      score,
+    });
   }
 
-  // 2) Scoring + tri + top20 (score optionnel)
-  const scored = candidatesRaw.map((c) => ({
-    ...c,
-    score: typeof c.score === "number" ? c.score : 0,
-  }));
-
-  const ranked = scored
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  // 3) Top 20
+  const top = candidates
+    .filter((c) => c.artistName && c.albumName)
+    .sort((a, b) => b.score - a.score)
     .slice(0, 20);
 
-  // 3) Préparer items "basiques"
-  const baseItems = ranked.map((r, idx) => ({
+  const baseItems = top.map((c, idx) => ({
     rank: idx + 1,
-    artistName: safeString(r.artistName),
-    albumName: safeString(r.albumName),
-    signals: uniqStrings(r.signals),
-    sourceLinks: (Array.isArray(r.sourceLinks) ? r.sourceLinks : []).slice(0, 3),
+    artistName: c.artistName,
+    albumName: c.albumName,
+    signals: c.signals,
+    sourceLinks: c.sourceLinks,
   }));
 
-  // 4) OpenAI enrich (1 seul call)
+  // 4) Enrich OpenAI (1 call)
   const enriched = await openaiEnrichBatch(
-    baseItems.map((it) => ({
+    baseItems.map((it) => ({ rank: it.rank, artistName: it.artistName, albumName: it.albumName, signals: it.signals }))
+  );
+
+  // 5) Merge final
+  const finalItems: WeeklyItem[] = baseItems.map((it) => {
+    const e = enriched.find((x) => x.rank === it.rank);
+    return {
       rank: it.rank,
       artistName: it.artistName,
       albumName: it.albumName,
       signals: it.signals,
-    }))
-  );
-
-  // 5) Merge + liens
-  const finalItems: WeeklyItem[] = baseItems.map((it) => {
-    const e = enriched.find((x) => x.rank === it.rank);
-
-    // ArtistName: priorité au retour IA, sinon celui existant
-    const artistName = safeString(e?.artistName) || it.artistName;
-    const albumName = it.albumName;
-
-    return {
-      rank: it.rank,
-      artistName,
-      albumName,
-      signals: it.signals,
       artistSummary: safeString(e?.artistSummary),
       editorialReview: safeString(e?.editorialReview),
       links: {
-        youtubeMusic: ytMusicSearchUrl(artistName, albumName),
-        soundcloud: scSearchUrl(artistName, albumName),
+        youtubeMusic: ytMusicSearchUrl(it.artistName, it.albumName),
+        soundcloud: scSearchUrl(it.artistName, it.albumName),
       },
       sourceLinks: it.sourceLinks,
     };
@@ -267,7 +275,6 @@ export async function POST(req: Request) {
 
   const weekly: WeeklyPayload = { weekId: computeWeekId(), items: finalItems };
 
-  // 6) Save
   await setWeekly(weekly);
 
   return NextResponse.json({ ok: true, weekId: weekly.weekId, count: weekly.items.length });
