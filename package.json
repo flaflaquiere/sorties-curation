@@ -1,21 +1,8 @@
 {
-  "name": "sorties-curation",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
   "dependencies": {
     "next": "14.2.5",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
-    "rss-parser": "^3.13.0",
-    "ioredis": "^5.4.1"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.4",
-    "@types/node": "^20.14.10",
-    "@types/react": "^18.2.79"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "redis": "^4.7.0"
   }
 }
